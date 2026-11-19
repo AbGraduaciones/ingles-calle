@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Inglés Calle - Simulador Real</title>
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="apple-touch-icon" href="/icon.svg" />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex justify-center">
+
+  <div class="w-full max-w-md bg-slate-900 h-screen flex flex-col shadow-2xl border-x border-slate-800 relative overflow-hidden">
+
+    <!-- ==================== VISTA 1: SIMULADOR ==================== -->
+    <div id="viewSimulator" class="flex-1 flex flex-col min-h-0">
+      <header class="p-4 bg-slate-900 border-b border-slate-800 shrink-0">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <h1 class="text-lg font-bold text-emerald-400">Inglés Calle 🇺🇸</h1>
+            <p class="text-xs text-slate-400">Simulador de vida real en EE. UU.</p>
+          </div>
+          <button id="btnReset" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg border border-slate-700">
+            Reiniciar
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 gap-2">
+          <select id="scenarioSelect" class="w-full bg-slate-800 text-sm text-white rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:border-emerald-500">
+            <option value="manager">👔 Hablar con el Manager (horario / pago)</option>
+            <option value="cliente">😤 Cliente impaciente en el trabajo</option>
+            <option value="tienda">🔧 Pedir algo en Home Depot / AutoZone</option>
+            <option value="clinica">🏥 Clínica o Farmacia</option>
+            <option value="telefono">📞 Llamada al banco o aseguradora</option>
+          </select>
+
+          <div class="grid grid-cols-2 gap-2 bg-slate-800 p-1 rounded-xl border border-slate-700">
+            <button id="modePractica" class="py-1.5 text-xs font-semibold rounded-lg bg-emerald-500 text-slate-950 transition">
+              🐢 Modo Práctica
+            </button>
+            <button id="modeCalle" class="py-1.5 text-xs font-semibold rounded-lg text-slate-300 hover:text-white transition">
+              🔥 Modo Calle
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main id="chatBox" class="flex-1 p-4 overflow-y-auto space-y-4">
+        <div class="text-center py-8">
+          <p class="text-sm text-slate-400 mb-4">Elige un escenario arriba y presiona el botón para comenzar a hablar.</p>
+          <button id="btnStart" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-6 py-3 rounded-2xl shadow-lg transition">
+            🎙️ Empezar Escenario
+          </button>
+        </div>
+      </main>
+
+      <!-- Panel emergente: "¿Cómo lo digo?" (ES -> EN) -->
+      <div id="helperPanel" class="hidden bg-slate-800 border-t-2 border-amber-500 p-4 space-y-3 shadow-2xl shrink-0">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xs font-bold text-amber-400 uppercase tracking-wide">🆘 ¿Cómo lo digo en inglés?</h2>
+          <button id="btnCloseHelper" class="text-xs text-slate-400 hover:text-white">✕ Cerrar</button>
+        </div>
+
+        <div class="flex gap-2">
+          <input
+            id="helperInput"
+            type="text"
+            placeholder="Ej: Dile que mañana no puedo venir temprano..."
+            class="flex-1 bg-slate-900 text-sm text-white rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:border-amber-500"
+          />
+          <button id="btnAskHelper" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs">
+            Traducir
+          </button>
+        </div>
+
+        <div id="helperResult" class="hidden bg-slate-900 rounded-xl p-3 border border-slate-700 space-y-2">
+          <p id="helperEnglish" class="text-sm font-semibold text-white"></p>
+          <p class="text-xs text-amber-300">🗣️ <span id="helperPronunciation"></span></p>
+          <div class="flex gap-2 pt-1">
+            <button id="btnPlayHelper" class="text-xs bg-slate-800 hover:bg-slate-700 text-emerald-400 px-3 py-1.5 rounded-lg border border-slate-700">
+              🔊 Escuchar
+            </button>
+            <button id="btnUseHelper" class="text-xs bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-3 py-1.5 rounded-lg">
+              Enviar al chat ↗
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel emergente: Diccionario (EN -> ES) -->
+      <div id="dictPanel" class="hidden bg-slate-800 border-t-2 border-sky-500 p-4 space-y-3 shadow-2xl shrink-0">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xs font-bold text-sky-400 uppercase tracking-wide">📖 Traducir Inglés → Español</h2>
+          <button id="btnCloseDict" class="text-xs text-slate-400 hover:text-white">✕ Cerrar</button>
+        </div>
+
+        <div class="flex gap-2">
+          <input
+            id="dictInput"
+            type="text"
+            placeholder="Ej: schedule, shift, receipt..."
+            class="flex-1 bg-slate-900 text-sm text-white rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:border-sky-500"
+          />
+          <button id="btnAskDict" class="bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs">
+            Buscar
+          </button>
+        </div>
+
+        <div id="dictResult" class="hidden bg-slate-900 rounded-xl p-3 border border-slate-700 space-y-2">
+          <div class="flex items-center justify-between">
+            <p id="dictSpanish" class="text-sm font-bold text-white"></p>
+            <button id="btnPlayDict" class="text-xs bg-slate-800 hover:bg-slate-700 text-sky-400 px-2.5 py-1 rounded-lg border border-slate-700">
+              🔊 Escuchar
+            </button>
+          </div>
+          <p class="text-xs text-amber-300">🗣️ <span id="dictPronunciation"></span></p>
+          <div class="pt-1 border-t border-slate-800 text-xs space-y-0.5">
+            <p id="dictExampleEn" class="text-slate-200 font-medium"></p>
+            <p id="dictExampleEs" class="text-slate-400"></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Controles Inferiores -->
+      <footer class="p-3 bg-slate-900 border-t border-slate-800 space-y-2 shrink-0">
+        <div class="flex items-center justify-between px-1 gap-2">
+          <div id="statusText" class="text-xs text-emerald-400 h-4 truncate"></div>
+          <div class="flex items-center gap-3 shrink-0">
+            <button id="btnOpenDict" class="text-xs font-semibold text-sky-400 hover:text-sky-300">
+              📖 EN→ES
+            </button>
+            <button id="btnOpenHelper" class="text-xs font-semibold text-amber-400 hover:text-amber-300">
+              🆘 ¿Cómo lo digo?
+            </button>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <input
+            id="textInput"
+            type="text"
+            placeholder="O escribe tu respuesta en inglés..."
+            class="flex-1 bg-slate-800 text-sm text-white rounded-xl px-3 py-2.5 border border-slate-700 focus:outline-none focus:border-emerald-500"
+          />
+          <button id="btnSend" class="bg-slate-700 hover:bg-slate-600 text-white px-3.5 py-2.5 rounded-xl text-sm font-semibold">
+            Enviar
+          </button>
+          <button id="btnMic" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 p-3 rounded-xl font-bold shadow-lg transition" title="Hablar en inglés">
+            🎙️
+          </button>
+        </div>
+      </footer>
+    </div>
+
+    <!-- ==================== VISTA 2: DESCIFRA AL NATIVO ==================== -->
+    <div id="viewDecipher" class="hidden flex-1 flex flex-col min-h-0">
+      <header class="p-4 bg-slate-900 border-b border-slate-800 shrink-0">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <h1 class="text-lg font-bold text-sky-400">Descifra al Nativo 👂</h1>
+            <p class="text-xs text-slate-400">Entrena tu oído con inglés rápido real</p>
+          </div>
+          <div class="bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-xl text-xs font-bold text-amber-400">
+            🔥 Racha: <span id="streakCount">0</span>
+          </div>
+        </div>
+
+        <select id="decipherCategory" class="w-full bg-slate-800 text-sm text-white rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:border-sky-500">
+          <option value="trabajo">👔 En el trabajo</option>
+          <option value="calle">🏙️ En la calle / casual</option>
+          <option value="tiendas">🛒 Tiendas y restaurantes</option>
+        </select>
+      </header>
+
+      <main class="flex-1 p-4 overflow-y-auto space-y-4">
+        <div id="decipherIntro" class="text-center py-10 space-y-4">
+          <p class="text-sm text-slate-300">Escucha cómo habla un estadounidense rápido y elige qué quiso decir realmente.</p>
+          <button id="btnStartDecipher" class="bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold px-6 py-3 rounded-2xl shadow-lg transition">
+            🎧 Empezar Reto
+          </button>
+        </div>
+
+        <div id="decipherLoading" class="hidden text-center py-12">
+          <p class="text-sm text-sky-400 animate-pulse">Generando frase real de la calle...</p>
+        </div>
+
+        <div id="decipherCard" class="hidden space-y-4">
+          <div class="bg-slate-800 border border-slate-700 rounded-2xl p-5 text-center space-y-4">
+            <p class="text-xs uppercase tracking-wider text-slate-400 font-semibold">¿Qué acaban de decir?</p>
+            <div class="flex justify-center gap-3">
+              <button id="btnPlayFast" class="flex-1 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold py-3 px-4 rounded-xl shadow transition text-sm">
+                🔥 Escuchar Nativo
+              </button>
+              <button id="btnPlaySlow" class="bg-slate-700 hover:bg-slate-600 text-white font-semibold py-3 px-4 rounded-xl transition text-sm">
+                🐢 Lento
+              </button>
+            </div>
+          </div>
+
+          <div id="decipherOptions" class="space-y-2.5"></div>
+
+          <div id="decipherReveal" class="hidden bg-slate-800/90 border border-slate-700 rounded-2xl p-4 space-y-3">
+            <p id="decipherVerdict" class="text-sm font-bold"></p>
+            <div class="bg-slate-900 rounded-xl p-3 space-y-1 border border-slate-700/70">
+              <p class="text-xs text-slate-400">Así sonó rápido:</p>
+              <p id="revealFast" class="text-base font-bold text-white"></p>
+              <p class="text-xs text-slate-400 pt-1">En inglés formal:</p>
+              <p id="revealClean" class="text-xs text-emerald-400"></p>
+            </div>
+            <div class="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-xs text-amber-200">
+              <span class="font-bold text-amber-400">🔍 Desglose:</span> <span id="revealBreakdown"></span>
+            </div>
+            <button id="btnNextDecipher" class="w-full bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold py-3 rounded-xl text-sm transition">
+              Siguiente frase →
+            </button>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <!-- ==================== BARRA DE NAVEGACIÓN INFERIOR ==================== -->
+    <nav class="grid grid-cols-2 bg-slate-950 border-t border-slate-800 shrink-0">
+      <button id="tabSimulator" class="py-3 flex flex-col items-center gap-1 text-emerald-400 border-t-2 border-emerald-400">
+        <span class="text-lg leading-none">🎙️</span>
+        <span class="text-[11px] font-bold">Simulador</span>
+      </button>
+      <button id="tabDecipher" class="py-3 flex flex-col items-center gap-1 text-slate-400 hover:text-slate-200 border-t-2 border-transparent">
+        <span class="text-lg leading-none">👂</span>
+        <span class="text-[11px] font-bold">Descifra al Nativo</span>
+      </button>
+    </nav>
+
+  </div>
+
+  <script>
+    // ==================== NAVEGACIÓN DE PESTAÑAS ====================
+    const viewSimulator = document.getElementById('viewSimulator');
+    const viewDecipher = document.getElementById('viewDecipher');
+    const tabSimulator = document.getElementById('tabSimulator');
+    const tabDecipher = document.getElementById('tabDecipher');
+
+    tabSimulator.addEventListener('click', () => {
+      viewSimulator.classList.remove('hidden');
+      viewDecipher.classList.add('hidden');
+      tabSimulator.className = 'py-3 flex flex-col items-center gap-1 text-emerald-400 border-t-2 border-emerald-400';
+      tabDecipher.className = 'py-3 flex flex-col items-center gap-1 text-slate-400 hover:text-slate-200 border-t-2 border-transparent';
+    });
+
+    tabDecipher.addEventListener('click', () => {
+      viewDecipher.classList.remove('hidden');
+      viewSimulator.classList.add('hidden');
+      tabDecipher.className = 'py-3 flex flex-col items-center gap-1 text-sky-400 border-t-2 border-sky-400';
+      tabSimulator.className = 'py-3 flex flex-col items-center gap-1 text-slate-400 hover:text-slate-200 border-t-2 border-transparent';
+    });
+
+    function speakEnglish(text, rate = 0.95) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'en-US';
+      utterance.rate = rate;
+      window.speechSynthesis.speak(utterance);
+    }
+
+    // ==================== LÓGICA DEL SIMULADOR ====================
+    const chatBox = document.getElementById('chatBox');
+    const scenarioSelect = document.getElementById('scenarioSelect');
+    const modePractica = document.getElementById('modePractica');
+    const modeCalle = document.getElementById('modeCalle');
+    const btnStart = document.getElementById('btnStart');
+    const btnReset = document.getElementById('btnReset');
+    const btnMic = document.getElementById('btnMic');
+    const btnSend = document.getElementById('btnSend');
+    const textInput = document.getElementById('textInput');
+    const statusText = document.getElementById('statusText');
+
+    const helperPanel = document.getElementById('helperPanel');
+    const btnOpenHelper = document.getElementById('btnOpenHelper');
+    const btnCloseHelper = document.getElementById('btnCloseHelper');
+    const helperInput = document.getElementById('helperInput');
+    const btnAskHelper = document.getElementById('btnAskHelper');
+    const helperResult = document.getElementById('helperResult');
+    const helperEnglish = document.getElementById('helperEnglish');
+    const helperPronunciation = document.getElementById('helperPronunciation');
+    const btnPlayHelper = document.getElementById('btnPlayHelper');
+    const btnUseHelper = document.getElementById('btnUseHelper');
+
+    const dictPanel = document.getElementById('dictPanel');
+    const btnOpenDict = document.getElementById('btnOpenDict');
+    const btnCloseDict = document.getElementById('btnCloseDict');
+    const dictInput = document.getElementById('dictInput');
+    const btnAskDict = document.getElementById('btnAskDict');
+    const dictResult = document.getElementById('dictResult');
+    const dictSpanish = document.getElementById('dictSpanish');
+    const dictPronunciation = document.getElementById('dictPronunciation');
+    const dictExampleEn = document.getElementById('dictExampleEn');
+    const dictExampleEs = document.getElementById('dictExampleEs');
+    const btnPlayDict = document.getElementById('btnPlayDict');
+
+    let currentMode = 'practica';
+    let history = [];
+    let isListening = false;
+    let lastHelperPhrase = '';
+    let lastDictWord = '';
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition = null;
+
+    if (SpeechRecognition) {
+      recognition = new SpeechRecognition();
+      recognition.lang = 'en-US';
+      recognition.interimResults = false;
+
+      recognition.onstart = () => {
+        isListening = true;
+        btnMic.classList.replace('bg-emerald-500', 'bg-red-500');
+        statusText.textContent = 'Escuchando en inglés... habla ahora';
+      };
+
+      recognition.onresult = (event) => {
+        sendMessage(event.results[0][0].transcript);
+      };
+
+      recognition.onerror = () => {
+        statusText.textContent = 'No se escuchó bien. Intenta de nuevo.';
+      };
+
+      recognition.onend = () => {
+        isListening = false;
+        btnMic.classList.replace('bg-red-500', 'bg-emerald-500');
+        if (statusText.textContent.includes('Escuchando')) statusText.textContent = '';
+      };
+    }
+
+    modePractica.addEventListener('click', () => {
+      currentMode = 'practica';
+      modePractica.className = 'py-1.5 text-xs font-semibold rounded-lg bg-emerald-500 text-slate-950 transition';
+      modeCalle.className = 'py-1.5 text-xs font-semibold rounded-lg text-slate-300 hover:text-white transition';
+    });
+
+    modeCalle.addEventListener('click', () => {
+      currentMode = 'calle';
+      modeCalle.className = 'py-1.5 text-xs font-semibold rounded-lg bg-orange-500 text-slate-950 transition';
+      modePractica.className = 'py-1.5 text-xs font-semibold rounded-lg text-slate-300 hover:text-white transition';
+    });
+
+    function addUserBubble(text) {
+      const div = document.createElement('div');
+      div.className = 'flex justify-end';
+      div.innerHTML = `<div class="bg-emerald-600 text-white text-sm px-4 py-2.5 rounded-2xl rounded-br-sm max-w-[85%] shadow"></div>`;
+      div.querySelector('div').textContent = text;
+      chatBox.appendChild(div);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function addAIBubble(reply, translation, feedback) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'space-y-2 max-w-[90%]';
+
+      const card = document.createElement('div');
+      card.className = 'bg-slate-800 border border-slate-700 text-slate-100 text-sm px-4 py-3 rounded-2xl rounded-bl-sm shadow';
+
+      const pReply = document.createElement('p');
+      pReply.className = 'mb-2';
+      pReply.textContent = reply;
+      card.appendChild(pReply);
+
+      const pTrans = document.createElement('p');
+      pTrans.className = 'hidden text-xs text-slate-300 bg-slate-900/70 p-2 rounded-lg mb-2 border border-slate-700/60';
+      pTrans.textContent = translation || 'Sin traducción disponible.';
+      card.appendChild(pTrans);
+
+      const actions = document.createElement('div');
+      actions.className = 'flex items-center gap-4';
+
+      const btnListen = document.createElement('button');
+      btnListen.className = 'text-xs text-emerald-400 hover:underline';
+      btnListen.textContent = '🔊 Escuchar';
+      btnListen.addEventListener('click', () => speakEnglish(reply, currentMode === 'calle' ? 1.12 : 0.9));
+
+      const btnTranslate = document.createElement('button');
+      btnTranslate.className = 'text-xs text-sky-400 hover:underline';
+      btnTranslate.textContent = '🌐 Traducir';
+      btnTranslate.addEventListener('click', () => {
+        const isHidden = pTrans.classList.toggle('hidden');
+        btnTranslate.textContent = isHidden ? '🌐 Traducir' : '🙈 Ocultar';
+      });
+
+      actions.appendChild(btnListen);
+      actions.appendChild(btnTranslate);
+      card.appendChild(actions);
+      wrapper.appendChild(card);
+
+      if (feedback) {
+        const fb = document.createElement('div');
+        fb.className = 'bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs px-3 py-2 rounded-xl';
+        fb.innerHTML = `<span class="font-bold text-amber-400">💡 Consejo:</span> `;
+        fb.appendChild(document.createTextNode(feedback));
+        wrapper.appendChild(fb);
+      }
+
+      chatBox.appendChild(wrapper);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    async function sendMessage(userMessage = '') {
+      if (userMessage) {
+        addUserBubble(userMessage);
+        history.push({ role: 'user', text: userMessage });
+      }
+      statusText.textContent = 'Pensando respuesta...';
+
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            scenario: scenarioSelect.value,
+            mode: currentMode,
+            history,
+            userMessage
+          })
+        });
+        const data = await res.json();
+        statusText.textContent = '';
+
+        if (data.error) {
+          statusText.textContent = 'Error: ' + data.error;
+          return;
+        }
+
+        history.push({ role: 'ai', text: data.reply });
+        addAIBubble(data.reply, data.translation, data.feedback);
+        speakEnglish(data.reply, currentMode === 'calle' ? 1.12 : 0.9);
+      } catch (err) {
+        statusText.textContent = 'Error de conexión con el servidor.';
+      }
+    }
+
+    // Panel "¿Cómo lo digo?" (ES -> EN)
+    btnOpenHelper.addEventListener('click', () => {
+      dictPanel.classList.add('hidden');
+      helperPanel.classList.toggle('hidden');
+      if (!helperPanel.classList.contains('hidden')) helperInput.focus();
+    });
+    btnCloseHelper.addEventListener('click', () => helperPanel.classList.add('hidden'));
+
+    async function askHowToSay() {
+      const spanishText = helperInput.value.trim();
+      if (!spanishText) return;
+      btnAskHelper.textContent = '...';
+      btnAskHelper.disabled = true;
+
+      try {
+        const res = await fetch('/api/how-to-say', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ spanishText, scenario: scenarioSelect.value, mode: currentMode })
+        });
+        const data = await res.json();
+        if (data.english) {
+          lastHelperPhrase = data.english;
+          helperEnglish.textContent = data.english;
+          helperPronunciation.textContent = data.pronunciation || '';
+          helperResult.classList.remove('hidden');
+          speakEnglish(data.english, 0.9);
+        }
+      } catch (err) {
+        alert('Error al buscar la frase.');
+      } finally {
+        btnAskHelper.textContent = 'Traducir';
+        btnAskHelper.disabled = false;
+      }
+    }
+
+    btnAskHelper.addEventListener('click', askHowToSay);
+    helperInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') askHowToSay(); });
+    btnPlayHelper.addEventListener('click', () => { if (lastHelperPhrase) speakEnglish(lastHelperPhrase, 0.9); });
+    btnUseHelper.addEventListener('click', () => {
+      if (!lastHelperPhrase) return;
+      helperPanel.classList.add('hidden');
+      helperInput.value = '';
+      helperResult.classList.add('hidden');
+      sendMessage(lastHelperPhrase);
+    });
+
+    // Panel Diccionario (EN -> ES)
+    btnOpenDict.addEventListener('click', () => {
+      helperPanel.classList.add('hidden');
+      dictPanel.classList.toggle('hidden');
+      if (!dictPanel.classList.contains('hidden')) dictInput.focus();
+    });
+    btnCloseDict.addEventListener('click', () => dictPanel.classList.add('hidden'));
+
+    async function askTranslateWord() {
+      const englishText = dictInput.value.trim();
+      if (!englishText) return;
+      btnAskDict.textContent = '...';
+      btnAskDict.disabled = true;
+
+      try {
+        const res = await fetch('/api/translate-word', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ englishText })
+        });
+        const data = await res.json();
+
+        if (data.spanish) {
+          lastDictWord = englishText;
+          dictSpanish.textContent = data.spanish;
+          dictPronunciation.textContent = data.pronunciation || '';
+          dictExampleEn.textContent = data.exampleEn || '';
+          dictExampleEs.textContent = data.exampleEs || '';
+          dictResult.classList.remove('hidden');
+          speakEnglish(englishText, 0.88);
+        }
+      } catch (err) {
+        alert('Error al traducir la palabra.');
+      } finally {
+        btnAskDict.textContent = 'Buscar';
+        btnAskDict.disabled = false;
+      }
+    }
+
+    btnAskDict.addEventListener('click', askTranslateWord);
+    dictInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') askTranslateWord(); });
+    btnPlayDict.addEventListener('click', () => { if (lastDictWord) speakEnglish(lastDictWord, 0.88); });
+
+    function startScenario() {
+      history = [];
+      chatBox.innerHTML = '';
+      sendMessage('');
+    }
+    btnStart.addEventListener('click', startScenario);
+    btnReset.addEventListener('click', startScenario);
+    scenarioSelect.addEventListener('change', startScenario);
+
+    btnMic.addEventListener('click', () => {
+      if (!recognition) {
+        alert('Tu navegador no soporta micrófono. Usa Google Chrome o escribe tu respuesta.');
+        return;
+      }
+      if (isListening) recognition.stop();
+      else recognition.start();
+    });
+
+    btnSend.addEventListener('click', () => {
+      const text = textInput.value.trim();
+      if (!text) return;
+      textInput.value = '';
+      sendMessage(text);
+    });
+    textInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') btnSend.click(); });
+
+    // ==================== LÓGICA DE DESCIFRA AL NATIVO ====================
+    const decipherCategory = document.getElementById('decipherCategory');
+    const decipherIntro = document.getElementById('decipherIntro');
+    const decipherLoading = document.getElementById('decipherLoading');
+    const decipherCard = document.getElementById('decipherCard');
+    const btnStartDecipher = document.getElementById('btnStartDecipher');
+    const btnPlayFast = document.getElementById('btnPlayFast');
+    const btnPlaySlow = document.getElementById('btnPlaySlow');
+    const decipherOptions = document.getElementById('decipherOptions');
+    const decipherReveal = document.getElementById('decipherReveal');
+    const decipherVerdict = document.getElementById('decipherVerdict');
+    const revealFast = document.getElementById('revealFast');
+    const revealClean = document.getElementById('revealClean');
+    const revealBreakdown = document.getElementById('revealBreakdown');
+    const btnNextDecipher = document.getElementById('btnNextDecipher');
+    const streakCount = document.getElementById('streakCount');
+
+    let currentChallenge = null;
+    let streak = 0;
+    let previousPhrases = [];
+    let answered = false;
+
+    async function loadDecipherChallenge() {
+      decipherIntro.classList.add('hidden');
+      decipherCard.classList.add('hidden');
+      decipherReveal.classList.add('hidden');
+      decipherLoading.classList.remove('hidden');
+      answered = false;
+
+      try {
+        const res = await fetch('/api/decipher', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            category: decipherCategory.value,
+            previousPhrases
+          })
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+
+        currentChallenge = data;
+        previousPhrases.push(data.fastPhrase);
+
+        decipherOptions.innerHTML = '';
+        data.options.forEach((optText, idx) => {
+          const btn = document.createElement('button');
+          btn.className = 'w-full text-left bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sm text-slate-100 px-4 py-3.5 rounded-xl transition';
+          btn.textContent = optText;
+          btn.addEventListener('click', () => handleDecipherAnswer(idx, btn));
+          decipherOptions.appendChild(btn);
+        });
+
+        decipherLoading.classList.add('hidden');
+        decipherCard.classList.remove('hidden');
+        speakEnglish(data.fastPhrase, 1.15);
+
+      } catch (err) {
+        decipherLoading.classList.add('hidden');
+        decipherIntro.classList.remove('hidden');
+        alert('No se pudo cargar el reto. Intenta de nuevo.');
+      }
+    }
+
+    function handleDecipherAnswer(selectedIndex, clickedBtn) {
+      if (answered || !currentChallenge) return;
+      answered = true;
+
+      const isCorrect = selectedIndex === currentChallenge.correctIndex;
+      const buttons = decipherOptions.querySelectorAll('button');
+
+      buttons.forEach((b, i) => {
+        b.disabled = true;
+        if (i === currentChallenge.correctIndex) {
+          b.className = 'w-full text-left bg-emerald-500/20 border-2 border-emerald-500 text-sm text-emerald-200 px-4 py-3.5 rounded-xl font-semibold';
+        } else if (i === selectedIndex && !isCorrect) {
+          b.className = 'w-full text-left bg-red-500/20 border-2 border-red-500 text-sm text-red-200 px-4 py-3.5 rounded-xl';
+        } else {
+          b.className = 'w-full text-left bg-slate-800/40 border border-slate-800 text-sm text-slate-500 px-4 py-3.5 rounded-xl';
+        }
+      });
+
+      if (isCorrect) {
+        streak++;
+        decipherVerdict.textContent = '✅ ¡Excelente oído! Le atinaste.';
+        decipherVerdict.className = 'text-sm font-bold text-emerald-400';
+      } else {
+        streak = 0;
+        decipherVerdict.textContent = '❌ Casi... así es como se descifra:';
+        decipherVerdict.className = 'text-sm font-bold text-red-400';
+      }
+
+      streakCount.textContent = streak;
+      revealFast.textContent = currentChallenge.fastPhrase;
+      revealClean.textContent = currentChallenge.cleanEnglish;
+      revealBreakdown.textContent = currentChallenge.breakdown;
+      decipherReveal.classList.remove('hidden');
+    }
+
+    btnStartDecipher.addEventListener('click', loadDecipherChallenge);
+    btnNextDecipher.addEventListener('click', loadDecipherChallenge);
+    decipherCategory.addEventListener('change', () => {
+      if (!decipherIntro.classList.contains('hidden')) return;
+      loadDecipherChallenge();
+    });
+    btnPlayFast.addEventListener('click', () => {
+      if (currentChallenge) speakEnglish(currentChallenge.fastPhrase, 1.18);
+    });
+    btnPlaySlow.addEventListener('click', () => {
+      if (currentChallenge) speakEnglish(currentChallenge.cleanEnglish, 0.8);
+    });
+  </script>
+</body>
+</html>
