@@ -1,17 +1,26 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 const express = require('express');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const { createClient } = require('@supabase/supabase-js');
 const { GoogleGenAI } = require('@google/genai');
 
 console.log('¿Leyó la llave de Gemini?:', Boolean(process.env.GEMINI_API_KEY));
+console.log('¿Leyó Supabase?:', Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY));
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const JWT_SECRET = process.env.JWT_SECRET || 'clave_temporal_ingles_calle';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+
+const FREE_SCENARIOS = ['manager', 'tienda'];
+const FREE_DAILY_LIMIT = 10;
 
 const SCENARIOS = {
   manager: "Eres el manager estadounidense de un restaurante/negocio ocupado. El usuario es un empleado latino que necesita pedirte un cambio de horario, un día libre o hablar sobre su pago.",
@@ -31,7 +40,6 @@ const MODELS_TO_TRY = [
 
 async function callGeminiJSON(prompt, systemInstruction) {
   let lastError = null;
-
   for (const modelName of MODELS_TO_TRY) {
     try {
       const response = await ai.models.generateContent({
@@ -52,10 +60,150 @@ async function callGeminiJSON(prompt, systemInstruction) {
   throw lastError;
 }
 
-// 1. Ruta principal del simulador
-app.post('/api/chat', async (req, res) => {
+// Middleware de autenticación y reinicio diario de usos
+async function authMiddleware(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Inicia sesión para continuar.' });
+  }
+
+  try {
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, JWT_SECRET);
+
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('id, email, plan, daily_uses, last_use_date')
+      .eq('id', decoded.userId)
+      .single();
+
+    if (error || !user) {
+      return res.status(401).json({ error: 'Sesión inválida. Inicia sesión de nuevo.' });
+    }
+
+    // Reinicia el contador si ya es un nuevo día
+    const today = new Date().toISOString().split('T')[0];
+    if (user.last_use_date !== today) {
+      user.daily_uses = 0;
+      user.last_use_date = today;
+      await supabase
+        .from('users')
+        .update({ daily_uses: 0, last_use_date: today })
+        .eq('id', user.id);
+    }
+
+    req.user = user;
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: 'Tu sesión expiró. Inicia sesión de nuevo.' });
+  }
+}
+
+async function incrementUsage(user) {
+  if (user.plan === 'pro') return user.daily_uses;
+  const newUses = user.daily_uses + 1;
+  const today = new Date().toISOString().split('T')[0];
+  await supabase
+    .from('users')
+    .update({ daily_uses: newUses, last_use_date: today })
+    .eq('id', user.id);
+  return newUses;
+}
+
+// ==================== RUTAS DE AUTENTICACIÓN ====================
+
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password || password.length < 6) {
+      return res.status(400).json({ error: 'Usa un correo válido y una contraseña de al menos 6 caracteres.' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const password_hash = await bcrypt.hash(password, 10);
+
+    const { data: user, error } = await supabase
+      .from('users')
+      .insert([{ email: cleanEmail, password_hash, plan: 'free', daily_uses: 0 }])
+      .select('id, email, plan, daily_uses')
+      .single();
+
+    if (error) {
+      if (error.code === '23505') {
+        return res.status(400).json({ error: 'Ese correo ya está registrado. Intenta iniciar sesión.' });
+      }
+      throw error;
+    }
+
+    const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '30d' });
+    res.json({ token, user, limit: FREE_DAILY_LIMIT });
+  } catch (err) {
+    console.error('Error en registro:', err);
+    res.status(500).json({ error: 'No se pudo crear la cuenta.' });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Ingresa tu correo y contraseña.' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('id, email, password_hash, plan, daily_uses, last_use_date')
+      .eq('email', cleanEmail)
+      .single();
+
+    if (error || !user) {
+      return res.status(401).json({ error: 'Correo o contraseña incorrectos.' });
+    }
+
+    const valid = await bcrypt.compare(password, user.password_hash);
+    if (!valid) {
+      return res.status(401).json({ error: 'Correo o contraseña incorrectos.' });
+    }
+
+    const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '30d' });
+    res.json({
+      token,
+      user: { id: user.id, email: user.email, plan: user.plan, daily_uses: user.daily_uses },
+      limit: FREE_DAILY_LIMIT
+    });
+  } catch (err) {
+    console.error('Error en login:', err);
+    res.status(500).json({ error: 'No se pudo iniciar sesión.' });
+  }
+});
+
+app.get('/api/auth/me', authMiddleware, (req, res) => {
+  res.json({ user: req.user, limit: FREE_DAILY_LIMIT });
+});
+
+// ==================== RUTAS DE LA APP (PROTEGIDAS) ====================
+
+// 1. Simulador principal
+app.post('/api/chat', authMiddleware, async (req, res) => {
   try {
     const { scenario = 'manager', mode = 'practica', history = [], userMessage } = req.body;
+
+    // Candado de escenarios Pro
+    if (req.user.plan !== 'pro' && !FREE_SCENARIOS.includes(scenario)) {
+      return res.status(403).json({
+        code: 'PRO_REQUIRED',
+        error: 'Este escenario es exclusivo del Plan Pro.'
+      });
+    }
+
+    // Candado de límite diario
+    if (req.user.plan !== 'pro' && req.user.daily_uses >= FREE_DAILY_LIMIT) {
+      return res.status(403).json({
+        code: 'LIMIT_REACHED',
+        error: `Llegaste a tus ${FREE_DAILY_LIMIT} usos gratis de hoy. Pásate a Pro para practicar sin límites.`
+      });
+    }
 
     const scenarioDesc = SCENARIOS[scenario] || SCENARIOS.manager;
     const modeDesc = mode === 'calle'
@@ -84,19 +232,22 @@ app.post('/api/chat', async (req, res) => {
     const prompt = `${conversationText}\nUsuario: ${userMessage || 'Start the conversation in character.'}`;
 
     const data = await callGeminiJSON(prompt, systemInstruction);
-    res.json(data);
+    const updatedUses = await incrementUsage(req.user);
 
+    res.json({
+      ...data,
+      usage: { plan: req.user.plan, daily_uses: updatedUses, limit: FREE_DAILY_LIMIT }
+    });
   } catch (error) {
     console.error('Error con Gemini en /api/chat:', error);
     res.status(500).json({ error: 'Hubo un problema al conectar con la IA.' });
   }
 });
 
-// 2. Ruta para el botón "¿Cómo lo digo?" (ES -> EN)
-app.post('/api/how-to-say', async (req, res) => {
+// 2. "¿Cómo lo digo?" (ES -> EN)
+app.post('/api/how-to-say', authMiddleware, async (req, res) => {
   try {
     const { spanishText, scenario = 'manager', mode = 'practica' } = req.body;
-
     if (!spanishText) {
       return res.status(400).json({ error: 'Escribe primero lo que quieres decir.' });
     }
@@ -117,18 +268,23 @@ app.post('/api/how-to-say', async (req, res) => {
 
     const data = await callGeminiJSON(`Quiero decir esto: "${spanishText}"`, systemInstruction);
     res.json(data);
-
   } catch (error) {
     console.error('Error en /api/how-to-say:', error);
     res.status(500).json({ error: 'No se pudo traducir tu frase.' });
   }
 });
 
-// 3. Ruta para "Descifra al Nativo"
-app.post('/api/decipher', async (req, res) => {
+// 3. "Descifra al Nativo"
+app.post('/api/decipher', authMiddleware, async (req, res) => {
   try {
-    const { category = 'trabajo', previousPhrases = [] } = req.body;
+    if (req.user.plan !== 'pro' && req.user.daily_uses >= FREE_DAILY_LIMIT) {
+      return res.status(403).json({
+        code: 'LIMIT_REACHED',
+        error: `Llegaste a tus ${FREE_DAILY_LIMIT} usos gratis de hoy. Pásate a Pro para practicar sin límites.`
+      });
+    }
 
+    const { category = 'trabajo', previousPhrases = [] } = req.body;
     const categoryMap = {
       trabajo: "Un jefe, compañero o cliente hablando rápido en el trabajo en EE. UU. (turnos, pagos, pedidos, tareas).",
       calle: "Conversación casual en la calle, vecinos, amigos o alguien preguntando algo rápido en EE. UU.",
@@ -136,7 +292,6 @@ app.post('/api/decipher', async (req, res) => {
     };
 
     const avoidList = previousPhrases.slice(-6).join(' | ');
-
     const systemInstruction = `
       Eres un creador de retos de oído para latinos en Estados Unidos llamado "Descifra al Nativo".
       Contexto: ${categoryMap[category] || categoryMap.trabajo}
@@ -156,19 +311,22 @@ app.post('/api/decipher', async (req, res) => {
     `;
 
     const data = await callGeminiJSON('Genera un nuevo reto de audio real.', systemInstruction);
-    res.json(data);
+    const updatedUses = await incrementUsage(req.user);
 
+    res.json({
+      ...data,
+      usage: { plan: req.user.plan, daily_uses: updatedUses, limit: FREE_DAILY_LIMIT }
+    });
   } catch (error) {
     console.error('Error en /api/decipher:', error);
     res.status(500).json({ error: 'No se pudo generar el reto.' });
   }
 });
 
-// 4. Ruta para el diccionario rápido (EN -> ES)
-app.post('/api/translate-word', async (req, res) => {
+// 4. Diccionario rápido (EN -> ES)
+app.post('/api/translate-word', authMiddleware, async (req, res) => {
   try {
     const { englishText } = req.body;
-
     if (!englishText) {
       return res.status(400).json({ error: 'Escribe una palabra o frase en inglés.' });
     }
@@ -186,7 +344,6 @@ app.post('/api/translate-word', async (req, res) => {
 
     const data = await callGeminiJSON(`Traduce y explica esto: "${englishText}"`, systemInstruction);
     res.json(data);
-
   } catch (error) {
     console.error('Error en /api/translate-word:', error);
     res.status(500).json({ error: 'No se pudo traducir la palabra.' });
