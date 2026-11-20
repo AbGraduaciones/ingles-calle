@@ -46,8 +46,41 @@
             Entrar
           </button>
         </form>
+        <button id="btnOpenForgot" type="button" class="w-full text-xs text-slate-400 hover:text-emerald-400 pt-1 transition">
+  ¿Olvidaste tu contraseña?
+</button>
       </div>
     </div>
+    <!-- ==================== MODAL OLVIDÉ MI CONTRASEÑA ==================== -->
+<div id="forgotModal" class="hidden absolute inset-0 z-50 bg-slate-950/95 flex items-center justify-center p-6">
+  <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-sm space-y-4 shadow-2xl">
+    <div class="flex items-center justify-between">
+      <h2 class="text-base font-bold text-emerald-400">Recuperar contraseña</h2>
+      <button id="btnCloseForgot" class="text-slate-400 hover:text-white text-sm">✕</button>
+    </div>
+
+    <!-- Paso 1: Pedir correo -->
+    <div id="forgotStep1" class="space-y-3">
+      <p class="text-xs text-slate-400">Escribe tu correo y te mandaremos un código de 6 dígitos.</p>
+      <input id="forgotEmail" type="email" placeholder="tu@correo.com" class="w-full bg-slate-800 text-sm text-white rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-emerald-500" />
+      <button id="btnSendResetCode" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 rounded-xl text-sm transition">
+        Enviar código
+      </button>
+    </div>
+
+    <!-- Paso 2: Código + Nueva contraseña -->
+    <div id="forgotStep2" class="hidden space-y-3">
+      <p class="text-xs text-slate-400">Revisa tu correo e ingresa el código de 6 dígitos y tu nueva contraseña.</p>
+      <input id="forgotCode" type="text" maxlength="6" placeholder="Código de 6 dígitos" class="w-full bg-slate-800 text-sm text-white rounded-xl px-3.5 py-2.5 border border-slate-700 text-center tracking-widest font-bold focus:outline-none focus:border-emerald-500" />
+      <input id="forgotNewPass" type="password" minlength="6" placeholder="Nueva contraseña (mín. 6 caracteres)" class="w-full bg-slate-800 text-sm text-white rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-emerald-500" />
+      <button id="btnConfirmReset" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 rounded-xl text-sm transition">
+        Guardar nueva contraseña
+      </button>
+    </div>
+
+    <p id="forgotMsg" class="hidden text-xs rounded-lg p-2.5"></p>
+  </div>
+</div>
 
     <!-- ==================== MODAL PLAN PRO ==================== -->
     <div id="proModal" class="hidden absolute inset-0 z-40 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-5">
@@ -368,6 +401,89 @@
       currentUser = null;
       authScreen.classList.remove('hidden');
     });
+    // ==================== OLVIDÉ MI CONTRASEÑA ====================
+const forgotModal = document.getElementById('forgotModal');
+const btnOpenForgot = document.getElementById('btnOpenForgot');
+const btnCloseForgot = document.getElementById('btnCloseForgot');
+const forgotStep1 = document.getElementById('forgotStep1');
+const forgotStep2 = document.getElementById('forgotStep2');
+const forgotEmail = document.getElementById('forgotEmail');
+const forgotCode = document.getElementById('forgotCode');
+const forgotNewPass = document.getElementById('forgotNewPass');
+const btnSendResetCode = document.getElementById('btnSendResetCode');
+const btnConfirmReset = document.getElementById('btnConfirmReset');
+const forgotMsg = document.getElementById('forgotMsg');
+
+function showForgotMsg(text, isError = false) {
+  forgotMsg.textContent = text;
+  forgotMsg.className = isError
+    ? 'text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg p-2.5'
+    : 'text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-2.5';
+}
+
+btnOpenForgot.addEventListener('click', () => {
+  forgotEmail.value = authEmail.value || '';
+  forgotCode.value = '';
+  forgotNewPass.value = '';
+  forgotStep1.classList.remove('hidden');
+  forgotStep2.classList.add('hidden');
+  forgotMsg.classList.add('hidden');
+  forgotModal.classList.remove('hidden');
+});
+
+btnCloseForgot.addEventListener('click', () => forgotModal.classList.add('hidden'));
+
+btnSendResetCode.addEventListener('click', async () => {
+  if (!forgotEmail.value.trim()) return showForgotMsg('Escribe tu correo primero.', true);
+  btnSendResetCode.disabled = true;
+  btnSendResetCode.textContent = 'Enviando...';
+  try {
+    const res = await fetch('/api/auth/forgot-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: forgotEmail.value })
+    });
+    const data = await res.json();
+    if (!res.ok) return showForgotMsg(data.error, true);
+    showForgotMsg(data.message, false);
+    forgotStep1.classList.add('hidden');
+    forgotStep2.classList.remove('hidden');
+  } catch {
+    showForgotMsg('Error de conexión.', true);
+  } finally {
+    btnSendResetCode.disabled = false;
+    btnSendResetCode.textContent = 'Enviar código';
+  }
+});
+
+btnConfirmReset.addEventListener('click', async () => {
+  btnConfirmReset.disabled = true;
+  btnConfirmReset.textContent = 'Guardando...';
+  try {
+    const res = await fetch('/api/auth/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: forgotEmail.value,
+        code: forgotCode.value,
+        newPassword: forgotNewPass.value
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) return showForgotMsg(data.error, true);
+    showForgotMsg(data.message, false);
+    setTimeout(() => {
+      forgotModal.classList.add('hidden');
+      authEmail.value = forgotEmail.value;
+      authPassword.value = '';
+    }, 1500);
+  } catch {
+    showForgotMsg('Error de conexión.', true);
+  } finally {
+    btnConfirmReset.disabled = false;
+    btnConfirmReset.textContent = 'Guardar nueva contraseña';
+  }
+});
 
     async function checkSession() {
       if (!authToken) {

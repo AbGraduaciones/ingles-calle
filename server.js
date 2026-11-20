@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { createClient } = require('@supabase/supabase-js');
 const { GoogleGenAI } = require('@google/genai');
+const { Resend } = require('resend');
 
 console.log('¿Leyó la llave de Gemini?:', Boolean(process.env.GEMINI_API_KEY));
 console.log('¿Leyó Supabase?:', Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY));
@@ -15,6 +16,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'clave_temporal_ingles_calle';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -181,7 +183,99 @@ app.post('/api/auth/login', async (req, res) => {
 app.get('/api/auth/me', authMiddleware, (req, res) => {
   res.json({ user: req.user, limit: FREE_DAILY_LIMIT });
 });
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'Ingresa tu correo electrónico.' });
 
+    const cleanEmail = email.trim().toLowerCase();
+    const { data: user, error: findError } = await supabase
+  .from('users')
+  .select('id, email')
+  .ilike('email', cleanEmail)
+  .maybeSingle();
+
+if (findError) {
+  console.error('Error buscando usuario en Supabase:', findError);
+  return res.status(500).json({ error: 'Error al consultar la base de datos.' });
+}
+
+    if (!user) {
+      return res.status(404).json({ error: 'No encontramos una cuenta con ese correo.' });
+    }
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 minutos
+
+    await supabase
+      .from('users')
+      .update({ reset_code: code, reset_code_expires: expiresAt })
+      .eq('id', user.id);
+
+    if (!resend) {
+      return res.status(500).json({ error: 'Falta configurar RESEND_API_KEY en el servidor.' });
+    }
+
+    const { error: mailError } = await resend.emails.send({
+      from: 'Inglés Calle <onboarding@resend.dev>',
+      to: cleanEmail,
+      subject: `Tu código de recuperación: ${code}`,
+      html: `
+        <div style="font-family: sans-serif; padding: 20px;">
+          <h2>Recupera tu contraseña en Inglés Calle 🇺🇸</h2>
+          <p>Usa este código de 6 dígitos en la app (expira en 15 minutos):</p>
+          <h1 style="letter-spacing: 6px; color: #10b981;">${code}</h1>
+          <p style="font-size: 12px; color: #666;">Si no pediste este código, ignora este correo.</p>
+        </div>
+      `
+    });
+
+    if (mailError) {
+      console.error('Error enviando correo con Resend:', mailError);
+      return res.status(500).json({ error: 'No se pudo enviar el correo. Verifica tu cuenta de Resend.' });
+    }
+
+    res.json({ message: 'Te enviamos un código de 6 dígitos a tu correo.' });
+  } catch (err) {
+    console.error('Error en forgot-password:', err);
+    res.status(500).json({ error: 'Hubo un problema al procesar tu solicitud.' });
+  }
+});
+
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const { email, code, newPassword } = req.body;
+    if (!email || !code || !newPassword || newPassword.length < 6) {
+      return res.status(400).json({ error: 'Completa todos los campos (contraseña mínimo 6 caracteres).' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const { data: user } = await supabase
+      .from('users')
+      .select('id, reset_code, reset_code_expires')
+      .eq('email', cleanEmail)
+      .single();
+
+    if (!user || user.reset_code !== code.trim()) {
+      return res.status(400).json({ error: 'El código es incorrecto.' });
+    }
+
+    if (new Date(user.reset_code_expires) < new Date()) {
+      return res.status(400).json({ error: 'El código expiró. Pide uno nuevo.' });
+    }
+
+    const password_hash = await bcrypt.hash(newPassword, 10);
+    await supabase
+      .from('users')
+      .update({ password_hash, reset_code: null, reset_code_expires: null })
+      .eq('id', user.id);
+
+    res.json({ message: '¡Contraseña actualizada! Ya puedes iniciar sesión.' });
+  } catch (err) {
+    console.error('Error en reset-password:', err);
+    res.status(500).json({ error: 'No se pudo actualizar la contraseña.' });
+  }
+});
 // ==================== RUTAS DE LA APP (PROTEGIDAS) ====================
 
 // 1. Simulador principal
