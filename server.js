@@ -30,6 +30,9 @@ const SCENARIOS = {
   tienda: "Eres un empleado de Home Depot o AutoZone en EE. UU. El usuario busca una herramienta o pieza específica y necesita ayuda.",
   clinica: "Eres recepcionista en una clínica o farmacia en EE. UU. El usuario viene a recoger una medicina o explicar un síntoma para pedir cita.",
   telefono: "Eres un agente de servicio al cliente de un banco o aseguradora en EE. UU. El usuario llamó para resolver un cobro o problema con su cuenta."
+  restaurante: 'Eres el chef o encargado de turno en un restaurante ocupado en EE. UU. El usuario trabaja ahí (cocinero, mesero o busboy). Háblale de órdenes pendientes, mesas por limpiar, ingredientes que faltan o cambios de turno.',
+limpieza: 'Eres el dueño de una casa o supervisor de limpieza en EE. UU. El usuario trabaja limpiando. Háblale sobre áreas específicas a limpiar, productos, horarios de entrada/salida o instrucciones especiales.',
+ninera: 'Eres un papá o mamá ocupado en EE. UU. que contrató al usuario como niñera (babysitter/nanny). Háblale sobre horarios de comida, alergias, tareas de los niños, hora de dormir o a qué hora regresas.',
 };
 
 const MODELS_TO_TRY = [
